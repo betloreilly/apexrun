@@ -1,0 +1,22 @@
+body {
+    margin: 0;
+    overflow: hidden; /* Hide scrollbars */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #333; /* Simple dark background for area outside canvas */
+}
+
+canvas {
+    border: 1px solid white;
+    /* background-color: #ADD8E6; */ /* Background is now drawn in JS */
+    /* Ensure the canvas display size matches the element attributes */
+    width: 1024px; 
+    height: 768px;
+    /* Image rendering is handled in JS, but this can help */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+} 
