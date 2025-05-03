@@ -248,50 +248,65 @@ class Fox extends Player {
 
     draw(ctx) {
         const bodyW = this.width;
-        const bodyH = this.height * 0.7; // Main body part height
+        const bodyH = this.height * 0.7;
         const legH = this.height * 0.3;
         const legW = this.width * 0.2;
         const tailW = this.width * 0.8;
         const tailH = this.height * 0.4;
+        const headX = bodyW * 0.3;
+        const earW = this.width * 0.3;
+        const earH = this.height * 0.3;
 
         ctx.save();
         ctx.translate(this.x, this.y);
-
-        // Flip horizontally based on movement direction
         const scaleX = (this.dx === 0) ? 1 : Math.sign(this.dx);
         ctx.scale(scaleX, 1);
 
-        // Legs (draw first)
+        // Legs (4 legs)
         ctx.fillStyle = this.color;
-        ctx.globalAlpha = 0.8; // Slightly different alpha for legs?
-        ctx.fillRect(-bodyW * 0.35, bodyH / 2 - legH * 0.2, legW, legH); // Back leg
-        ctx.fillRect( bodyW * 0.15, bodyH / 2 - legH * 0.2, legW, legH); // Front leg
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(-bodyW * 0.35, bodyH / 2 - legH * 0.2, legW, legH); // Back left
+        ctx.fillRect(-bodyW * 0.1, bodyH / 2 - legH * 0.2, legW, legH); // Back right
+        ctx.fillRect( bodyW * 0.05, bodyH / 2 - legH * 0.2, legW, legH); // Front left
+        ctx.fillRect( bodyW * 0.3, bodyH / 2 - legH * 0.2, legW, legH); // Front right
         ctx.globalAlpha = 1.0;
 
-        // Tail (bushy ellipse)
+        // Tail
         ctx.fillStyle = this.color;
         ctx.beginPath();
-        ctx.ellipse(-bodyW * 0.6, 0, tailW / 2, tailH / 2, Math.PI / 6, 0, Math.PI * 2); // Angled ellipse
+        ctx.ellipse(-bodyW * 0.6, 0, tailW / 2, tailH / 2, Math.PI / 6, 0, Math.PI * 2);
         ctx.fill();
 
-        // Body (main rectangle)
+        // Body
         ctx.fillStyle = this.color;
         ctx.fillRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH);
 
-        // Head/Snout Triangle
+        // Ears (two triangles)
         ctx.beginPath();
-        ctx.moveTo(bodyW * 0.3, -bodyH / 2); // Top back of head
-        ctx.lineTo(bodyW * 0.3 + this.snoutLength, 0); // Snout tip
-        ctx.lineTo(bodyW * 0.3, bodyH / 2); // Bottom back of head
+        ctx.moveTo(headX - earW * 0.5, -bodyH / 2 - earH * 0.2);
+        ctx.lineTo(headX, -bodyH / 2 - earH);
+        ctx.lineTo(headX + earW * 0.5, -bodyH / 2 - earH * 0.2);
         ctx.closePath();
         ctx.fill();
-        
-        // Eye (small black dot)
-        ctx.fillStyle = '#000000';
         ctx.beginPath();
-        ctx.arc(bodyW * 0.3 + this.snoutLength * 0.4, -bodyH * 0.1, 2, 0, Math.PI * 2);
+        ctx.moveTo(headX + earW * 0.1, -bodyH / 2 - earH * 0.3);
+        ctx.lineTo(headX + earW * 0.6, -bodyH / 2 - earH * 1.1);
+        ctx.lineTo(headX + earW * 1.1, -bodyH / 2 - earH * 0.3);
+        ctx.closePath();
         ctx.fill();
 
+        // Head/Snout Triangle
+        ctx.beginPath();
+        ctx.moveTo(headX, -bodyH / 2);
+        ctx.lineTo(headX + this.snoutLength, 0);
+        ctx.lineTo(headX, bodyH / 2);
+        ctx.closePath();
+        ctx.fill();
+        // Eye
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(headX + this.snoutLength * 0.4, -bodyH * 0.1, 2, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 }
@@ -546,12 +561,16 @@ class Rabbit extends GameObject {
         this.changeDirectionInterval = ANIMAL_CHANGE_DIR_INTERVAL;
         this.setRandomDirection();
         this.healAmount = RABBIT_HEAL;
+        this.hopOffset = 0;
+        this.hopSpeed = 8; // Faster hop cycle
+        this.isHopping = false;
     }
 
     update(deltaTime) {
         if (!isDay) {
             this.dx = 0;
             this.dy = 0;
+            this.isHopping = false;
             return;
         }
 
@@ -561,24 +580,34 @@ class Rabbit extends GameObject {
             this.moveTimer = this.changeDirectionInterval * (0.5 + Math.random());
         }
 
+        const prevX = this.x;
+        const prevY = this.y;
         this.x += this.dx * deltaTime;
         this.y += this.dy * deltaTime;
+
+        // Hopping animation when moving
+        if (Math.abs(this.dx) > 1 || Math.abs(this.dy) > 1) {
+             this.isHopping = true;
+             this.hopOffset = Math.abs(Math.sin(Date.now() * 0.01 * this.hopSpeed)) * -this.height * 0.4; // Hop upwards
+        } else {
+             this.isHopping = false;
+             this.hopOffset = 0;
+        }
 
         // Boundary check
         const halfW = this.width / 2;
         const halfH = this.height / 2;
-        const groundLine = SCREEN_HEIGHT * (1 - 0.9); // Calculate ground line (10% sky)
+        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
 
         if (this.x - halfW < 0 || this.x + halfW > SCREEN_WIDTH) {
             this.dx *= -1;
             this.x = Math.max(halfW, Math.min(SCREEN_WIDTH - halfW, this.x));
         }
-        // Prevent moving above ground line & handle bottom boundary
-        if (this.y + halfH > SCREEN_HEIGHT) { // Hit bottom
-            this.dy = Math.abs(this.dy) * -1; // Force bounce up
+        if (this.y + halfH > SCREEN_HEIGHT) {
+            this.dy = Math.abs(this.dy) * -1;
             this.y = SCREEN_HEIGHT - halfH;
-        } else if (this.y - halfH < groundLine) { // Hit top (ground line)
-             this.dy = Math.abs(this.dy); // Force bounce down
+        } else if (this.y - halfH < groundLine) {
+             this.dy = Math.abs(this.dy);
              this.y = groundLine + halfH;
         }
     }
@@ -590,45 +619,74 @@ class Rabbit extends GameObject {
     }
 
     draw(ctx) {
-        const bodyH = this.height * 0.8; // Body height
-        const bodyW = this.width;
-        const headR = this.width * 0.3; // Head radius
-        const earH = this.height * 0.7;
-        const earW = this.width * 0.2;
-        
         ctx.save();
-        ctx.translate(this.x, this.y);
-        
-        // Simple rotation based on horizontal movement direction
-        if (this.dx !== 0) {
-            ctx.scale(Math.sign(this.dx), 1); // Flip horizontally if moving left
+        ctx.translate(this.x, this.y + this.hopOffset); // Apply hopping offset
+
+        const scaleX = (this.dx === 0) ? 1 : Math.sign(this.dx);
+        ctx.scale(scaleX, 1);
+
+        // Hind legs (visible when hopping/side-on)
+        const legH = this.height * 0.5;
+        const legW = this.width * 0.3;
+        if (this.isHopping || scaleX !== 1) { // Show if hopping or facing left
+             ctx.fillStyle = COLOR_RABBIT_BODY;
+             ctx.globalAlpha = 0.9;
+             ctx.beginPath();
+             ctx.ellipse(-this.width * 0.25, this.height * 0.1, legW, legH * 0.6, Math.PI / 4, 0, Math.PI * 2);
+             ctx.fill();
+             ctx.globalAlpha = 1.0;
         }
 
-        // Ears (draw first)
-        ctx.fillStyle = COLOR_RABBIT_BODY;
-        ctx.fillRect(-bodyW * 0.1 - earW / 2, -bodyH / 2 - headR - earH, earW, earH); // Left ear
-        ctx.fillRect( bodyW * 0.1 - earW / 2, -bodyH / 2 - headR - earH, earW, earH); // Right ear
-        ctx.fillStyle = COLOR_RABBIT_DETAIL; // Inner ear pink
-        ctx.fillRect(-bodyW * 0.1 - earW / 4, -bodyH / 2 - headR - earH*0.8, earW/2, earH*0.8);
-        ctx.fillRect( bodyW * 0.1 - earW / 4, -bodyH / 2 - headR - earH*0.8, earW/2, earH*0.8);
-
-        // Body (ellipse/oval)
+        // Body (more oval)
         ctx.fillStyle = COLOR_RABBIT_BODY;
         ctx.beginPath();
-        ctx.ellipse(0, 0, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, this.width / 2, this.height / 2.5, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Head (circle)
+        // Head (slightly forward)
+        const headX = this.width * 0.35;
+        const headY = -this.height * 0.2;
+        const headR = this.width * 0.25;
         ctx.beginPath();
-        ctx.arc(bodyW * 0.3, -bodyH / 2, headR, 0, Math.PI * 2);
+        ctx.arc(headX, headY, headR, 0, Math.PI * 2);
         ctx.fill();
-        
-        // Nose (small detail)
+
+        // Ears (longer, draw behind head)
+        const earH = this.height * 1.1;
+        const earW = this.width * 0.18;
+        ctx.fillStyle = COLOR_RABBIT_BODY;
+        // Back ear
+        ctx.beginPath();
+        ctx.ellipse(headX - earW * 0.6, headY - earH * 0.4, earW, earH / 2, -Math.PI / 8, 0, Math.PI * 2);
+        ctx.fill();
+        // Front ear
+        ctx.beginPath();
+        ctx.ellipse(headX + earW * 0.6, headY - earH * 0.45, earW, earH / 2, -Math.PI / 10, 0, Math.PI * 2);
+        ctx.fill();
+        // Inner ear pink
         ctx.fillStyle = COLOR_RABBIT_DETAIL;
         ctx.beginPath();
-        ctx.arc(bodyW * 0.3 + headR * 0.8, -bodyH / 2, headR * 0.2, 0, Math.PI * 2);
+        ctx.ellipse(headX + earW * 0.6, headY - earH * 0.45, earW*0.6, earH * 0.35, -Math.PI / 10, 0, Math.PI * 2);
         ctx.fill();
-        
+
+        // Nose
+        ctx.fillStyle = COLOR_RABBIT_DETAIL;
+        ctx.beginPath();
+        ctx.arc(headX + headR * 0.8, headY, headR * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(headX + headR * 0.4, headY - headR * 0.3, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Tail (small puff)
+        ctx.fillStyle = '#F5F5F5'; // Slightly off-white
+        ctx.beginPath();
+        ctx.arc(-this.width * 0.5, this.height * 0.1, this.width * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
         ctx.restore();
     }
 }
@@ -693,49 +751,382 @@ class Pig extends GameObject {
         const bodyH = this.height;
         const headR = this.width * 0.3;
         const snoutR = headR * 0.4;
-
+        const legW = this.width * 0.18;
+        const legH = this.height * 0.28;
         ctx.save();
         ctx.translate(this.x, this.y);
-
-        // Simple rotation based on horizontal movement direction
         if (this.dx !== 0) {
-            ctx.scale(Math.sign(this.dx), 1); // Flip horizontally if moving left
+            ctx.scale(Math.sign(this.dx), 1);
         }
-        
-        // Tail (curly line)
-        ctx.strokeStyle = COLOR_PIG_BODY;
+        // Tail
+        ctx.strokeStyle = this.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(-bodyW / 2, 0);
         ctx.quadraticCurveTo(-bodyW * 0.7, -bodyH * 0.3, -bodyW*0.6, bodyH * 0.1);
         ctx.stroke();
-
-        // Body (ellipse)
-        ctx.fillStyle = COLOR_PIG_BODY;
+        // Legs (4 legs)
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(-bodyW * 0.3, bodyH * 0.3, legW, legH); // Back left
+        ctx.fillRect(-bodyW * 0.05, bodyH * 0.3, legW, legH); // Back right
+        ctx.fillRect( bodyW * 0.13, bodyH * 0.3, legW, legH); // Front left
+        ctx.fillRect( bodyW * 0.28, bodyH * 0.3, legW, legH); // Front right
+        ctx.globalAlpha = 1.0;
+        // Body
+        ctx.fillStyle = this.color;
         ctx.beginPath();
         ctx.ellipse(0, 0, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
         ctx.fill();
-
-        // Head (circle)
+        // Head
         ctx.beginPath();
         ctx.arc(bodyW * 0.35, -bodyH * 0.1, headR, 0, Math.PI * 2);
         ctx.fill();
-
-        // Snout (circle)
+        // Snout
         ctx.fillStyle = COLOR_PIG_DETAIL;
         const snoutX = bodyW * 0.35 + headR * 0.9;
         const snoutY = -bodyH * 0.1;
         ctx.beginPath();
         ctx.arc(snoutX, snoutY, snoutR, 0, Math.PI * 2);
         ctx.fill();
-        // Nostrils (tiny black dots)
+        // Nostrils
         ctx.fillStyle = '#000000';
         ctx.beginPath();
         ctx.arc(snoutX - snoutR * 0.3, snoutY, 1, 0, Math.PI*2);
         ctx.arc(snoutX + snoutR * 0.3, snoutY, 1, 0, Math.PI*2);
         ctx.fill();
+        ctx.restore();
+    }
+}
+
+// --- New NPC Classes ---
+
+class GoldenChicken extends GameObject {
+    constructor(x, y) {
+        super(x, y, '#FFD700'); // Gold color
+        this.width = 25;
+        this.height = 25;
+        this.speed = RABBIT_SPEED * 1.2; // Slightly faster
+        this.dx = 0;
+        this.dy = 0;
+        this.moveTimer = Math.random() * ANIMAL_CHANGE_DIR_INTERVAL;
+        this.changeDirectionInterval = ANIMAL_CHANGE_DIR_INTERVAL * 0.8; // Change direction more often
+        this.setRandomDirection();
+        this.healAmount = 25; // High score value
+        this.bobOffset = 0;
+        this.bobSpeed = 5;
+        this.legAngle = 0; // For leg animation
+    }
+
+    update(deltaTime) {
+        if (!isDay) {
+            this.dx = 0;
+            this.dy = 0;
+            return;
+        }
+
+        this.moveTimer -= deltaTime;
+        if (this.moveTimer <= 0) {
+            this.setRandomDirection();
+            this.moveTimer = this.changeDirectionInterval * (0.5 + Math.random());
+        }
+
+        const prevX = this.x;
+        const prevY = this.y;
+        this.x += this.dx * deltaTime;
+        this.y += this.dy * deltaTime;
+
+        // Bobbing effect
+        this.bobOffset = Math.sin(Date.now() * 0.01 * this.bobSpeed) * 3;
+
+        // Simple leg swing animation based on movement
+        if (Math.abs(this.dx) > 1 || Math.abs(this.dy) > 1) { // If moving
+             this.legAngle = Math.sin(Date.now() * 0.015) * (Math.PI / 6); // Swing legs
+        } else {
+             this.legAngle = 0; // Static legs when stopped
+        }
+
+        // Boundary check (similar to Rabbit/Pig)
+        const halfW = this.width / 2;
+        const halfH = this.height / 2;
+        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
+
+        if (this.x - halfW < 0 || this.x + halfW > SCREEN_WIDTH) {
+            this.dx *= -1;
+            this.x = Math.max(halfW, Math.min(SCREEN_WIDTH - halfW, this.x));
+        }
+        if (this.y + halfH > SCREEN_HEIGHT) {
+            this.dy = Math.abs(this.dy) * -1;
+            this.y = SCREEN_HEIGHT - halfH;
+        } else if (this.y - halfH < groundLine) {
+             this.dy = Math.abs(this.dy);
+             this.y = groundLine + halfH;
+        }
+    }
+
+    setRandomDirection() {
+        const angle = Math.random() * Math.PI * 2;
+        this.dx = Math.cos(angle) * this.speed;
+        this.dy = Math.sin(angle) * this.speed;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y + this.bobOffset); // Apply bobbing
+         if (this.dx !== 0) {
+             ctx.scale(Math.sign(this.dx), 1);
+         }
+
+        // Legs (draw first, behind body)
+        const legLength = this.height * 0.4;
+        const legWidth = 3;
+        ctx.fillStyle = '#FFA500'; // Orange legs
+        ctx.save();
+        ctx.rotate(this.legAngle); // Apply swing rotation
+        ctx.fillRect(-this.width * 0.15 - legWidth / 2, this.height * 0.3, legWidth, legLength); // Left leg
+        ctx.restore();
+        ctx.save();
+        ctx.rotate(-this.legAngle); // Apply opposite swing rotation
+        ctx.fillRect( this.width * 0.15 - legWidth / 2, this.height * 0.3, legWidth, legLength); // Right leg
+        ctx.restore();
+
+        // Body (circle)
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Small wing
+        ctx.fillStyle = '#FFEC8B'; // Lighter gold for wing detail
+        ctx.beginPath();
+        ctx.ellipse(-this.width*0.1, this.height*0.1, this.width*0.3, this.height*0.2, -0.5, 0, Math.PI*2);
+        ctx.fill();
+
+        // Comb (small red bit on top)
+        ctx.fillStyle = '#FF0000'; // Red comb
+        ctx.beginPath();
+        ctx.moveTo(0, -this.height*0.4);
+        ctx.lineTo(-this.width*0.1, -this.height*0.55);
+        ctx.lineTo(this.width*0.1, -this.height*0.55);
+        ctx.closePath();
+        ctx.fill();
+
+        // Beak
+        ctx.fillStyle = '#FFA500'; // Orange beak
+        ctx.beginPath();
+        ctx.moveTo(this.width / 2, 0);
+        ctx.lineTo(this.width * 0.7, -this.height * 0.1);
+        ctx.lineTo(this.width * 0.7, this.height * 0.1);
+        ctx.closePath();
+        ctx.fill();
+
+         // Eye
+         ctx.fillStyle = '#000000';
+         ctx.beginPath();
+         ctx.arc(this.width * 0.3, -this.height * 0.15, 2, 0, Math.PI*2);
+         ctx.fill();
 
         ctx.restore();
+    }
+}
+
+class Lumberjack extends GameObject {
+    constructor(x, y) {
+        super(x, y, '#A0522D'); // Base color (used for pants now)
+        this.width = 45;
+        this.height = 60;
+        this.speed = player ? player.speed * 0.65 : 120;
+        this.damage = 35;
+        this.chaseTarget = player;
+        this.attackCooldown = 1.8; // Slightly longer cooldown
+        this.attackTimer = 0;
+        this.state = 'chasing'; // 'chasing', 'windingUp', 'swinging'
+        this.windUpDuration = 0.3; // How long the wind-up takes
+        this.swingDuration = 0.4; // How long the axe swing animation takes
+        this.stateTimer = 0; // Timer for current state duration
+        this.facingRight = true;
+    }
+
+    update(deltaTime) {
+        if (player && this.speed !== player.speed * 0.65) {
+             this.speed = player.speed * 0.65;
+        }
+
+        if (isDay || !this.isActive || !this.chaseTarget || gameOver) {
+             this.state = 'chasing'; // Reset state if day comes etc.
+             this.stateTimer = 0;
+            return;
+        }
+
+        // Update attack cooldown timer
+        if (this.attackTimer > 0) {
+            this.attackTimer -= deltaTime;
+        }
+        // Update state timer
+        this.stateTimer += deltaTime;
+
+        // --- State Machine ---
+        switch (this.state) {
+            case 'chasing':
+                // --- Chasing Logic ---
+                const dx = this.chaseTarget.x - this.x;
+                const dy = this.chaseTarget.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > 0) {
+                    const moveX = (dx / distance) * this.speed;
+                    const moveY = (dy / distance) * this.speed;
+                    this.x += moveX * deltaTime;
+                    this.y += moveY * deltaTime;
+                    if (moveX !== 0) this.facingRight = moveX > 0;
+                }
+
+                // --- Check for Attack Trigger ---
+                if (this.attackTimer <= 0 && checkRectCollision(this, this.chaseTarget)) {
+                    console.log("Lumberjack starts wind-up!");
+                    this.state = 'windingUp';
+                    this.stateTimer = 0; // Reset timer for new state
+                }
+                break;
+
+            case 'windingUp':
+                // Stand still during wind-up
+                if (this.stateTimer >= this.windUpDuration) {
+                    console.log("Lumberjack swings!");
+                    this.state = 'swinging';
+                    this.stateTimer = 0; // Reset timer for swing state
+                    // Apply damage NOW at the start of the swing
+                    if (checkRectCollision(this, this.chaseTarget)) { // Check collision again just in case player moved
+                         console.log("Lumberjack hit player!");
+                         this.chaseTarget.takeHit(this.damage);
+                    }
+                    this.attackTimer = this.attackCooldown; // Start cooldown after swing starts
+                }
+                break;
+
+            case 'swinging':
+                // Stand still during swing
+                if (this.stateTimer >= this.swingDuration) {
+                    this.state = 'chasing'; // Return to chasing after swing
+                    this.stateTimer = 0;
+                }
+                break;
+        }
+
+         // Keep Lumberjack within bounds
+         this.x = Math.max(this.width / 2, Math.min(SCREEN_WIDTH - this.width / 2, this.x));
+         this.y = Math.max(this.height / 2, Math.min(SCREEN_HEIGHT - this.height / 2, this.y));
+    }
+
+    draw(ctx) {
+         ctx.save();
+         ctx.translate(this.x, this.y);
+         if (!this.facingRight) {
+             ctx.scale(-1, 1);
+         }
+
+         // Axe
+         const axeHandleLength = this.height * 0.9;
+         const axeHeadWidth = this.width * 0.5;
+         const axeHeadHeight = this.height * 0.25;
+         const pivotX = this.width * 0.15;
+         const pivotY = -this.height * 0.1; // Shoulder height pivot
+
+         ctx.save();
+         let axeAngle = -Math.PI / 6; // Idle angle
+
+         if (this.state === 'windingUp') {
+             // Raise axe during wind-up
+             const windUpPhase = this.stateTimer / this.windUpDuration;
+             axeAngle = -Math.PI / 6 - windUpPhase * (Math.PI / 3); // Raise slightly higher
+         } else if (this.state === 'swinging') {
+             // Swing down and slightly up
+             const swingPhase = this.stateTimer / this.swingDuration;
+              // Fast down, slower up: (swingPhase < 0.5 ? swingPhase * 2 : 1 - (swingPhase - 0.5) * 2)
+             const easedPhase = Math.sin(swingPhase * Math.PI); // Smoother sine wave swing
+             axeAngle = -Math.PI / 6 - (Math.PI / 3) + easedPhase * (Math.PI * 0.8); // Swing down from raised position
+         }
+
+         ctx.translate(pivotX, pivotY);
+         ctx.rotate(axeAngle);
+         ctx.translate(-pivotX, -pivotY);
+
+         // Handle
+         ctx.fillStyle = '#8B4513';
+         ctx.fillRect(pivotX - 4, pivotY - axeHandleLength * 0.7, 8, axeHandleLength);
+         // Head
+         ctx.fillStyle = '#C0C0C0';
+         const headBaseY = pivotY - axeHandleLength * 0.7;
+         ctx.beginPath();
+         ctx.moveTo(pivotX - axeHeadWidth / 2, headBaseY);
+         ctx.lineTo(pivotX + axeHeadWidth / 2, headBaseY);
+         ctx.lineTo(pivotX + axeHeadWidth * 0.3, headBaseY - axeHeadHeight); // Sharper angle
+         ctx.lineTo(pivotX - axeHeadWidth * 0.3, headBaseY - axeHeadHeight);
+         ctx.closePath();
+         ctx.fill();
+         // Shine on axe head
+         ctx.fillStyle = '#E0E0E0';
+         ctx.beginPath();
+         ctx.moveTo(pivotX - axeHeadWidth * 0.1, headBaseY - axeHeadHeight * 0.3);
+         ctx.lineTo(pivotX + axeHeadWidth * 0.1, headBaseY - axeHeadHeight * 0.3);
+         ctx.lineTo(pivotX + axeHeadWidth * 0.2, headBaseY - axeHeadHeight * 0.8);
+         ctx.lineTo(pivotX - axeHeadWidth * 0.2, headBaseY - axeHeadHeight * 0.8);
+         ctx.closePath();
+         ctx.fill();
+
+         ctx.restore(); // Restore axe rotation
+
+         // Legs/Pants (Bottom part of body rect)
+         ctx.fillStyle = this.color; // Use base color (Sienna) for pants
+         ctx.fillRect(-this.width / 2, 0, this.width, this.height / 2);
+
+         // Shirt (Top part of body rect)
+         const shirtColor = '#DC143C'; // Crimson Red shirt base
+         ctx.fillStyle = shirtColor;
+         ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height / 2);
+         // Plaid pattern (simple lines)
+         ctx.strokeStyle = '#000000'; // Black lines
+         ctx.lineWidth = 1;
+         const lineSpacing = 8;
+         for(let i = -this.width/2; i < this.width/2; i+= lineSpacing) {
+              ctx.beginPath();
+              ctx.moveTo(i, -this.height / 2);
+              ctx.lineTo(i, 0);
+              ctx.stroke();
+         }
+          for(let j = -this.height/2; j < 0; j+= lineSpacing) {
+              ctx.beginPath();
+              ctx.moveTo(-this.width / 2, j);
+              ctx.lineTo(this.width / 2, j);
+              ctx.stroke();
+         }
+
+         // Head
+         const headY = -this.height * 0.4;
+         const headRadius = this.width * 0.3;
+         ctx.fillStyle = '#FFDBAC'; // Skin color
+         ctx.beginPath();
+         ctx.arc(0, headY, headRadius, 0, Math.PI * 2);
+         ctx.fill();
+
+         // Beard
+         ctx.fillStyle = '#5C4033';
+         ctx.beginPath();
+         ctx.moveTo(-headRadius*0.8, headY + headRadius*0.3);
+         ctx.lineTo(headRadius*0.8, headY + headRadius*0.3);
+         ctx.lineTo(0, headY + headRadius*1.2); // Longer beard
+         ctx.closePath();
+         ctx.fill();
+
+         // Beanie
+         const beanieColor = '#8B0000'; // Dark Red
+         const beanieHeight = headRadius * 0.8;
+         ctx.fillStyle = beanieColor;
+         ctx.beginPath();
+         ctx.ellipse(0, headY - headRadius*0.6, headRadius*1.1, beanieHeight, 0, 0, Math.PI * 2);
+         ctx.fill();
+
+         ctx.restore(); // Restore main translate/scale
     }
 }
 
@@ -787,7 +1178,6 @@ function gameLoop(timestamp) {
 // --- Update Function ---
 function update(deltaTime) {
     if (gameOver) {
-        // Optionally add logic here for a game over screen fade, etc.
         return; // Stop updates if game is over
     }
 
@@ -805,16 +1195,17 @@ function update(deltaTime) {
     particles.forEach(p => p.update(deltaTime));
 
     // --- Collision Handling & Interactions ---
-    if (player && !gameOver) { // Don't check collisions if game over
+    if (player && !gameOver) { 
         // Player vs Food (Daytime)
         if (isDay) {
             for (let i = food.length - 1; i >= 0; i--) {
                 const item = food[i];
                 if (item.isActive && checkRectCollision(player, item)) {
                      if (item.healAmount > 0) { 
-                         player.heal(item.healAmount); // Heal player
+                         player.heal(item.healAmount);
                          item.isActive = false; 
-                         console.log(`Collected ${item.constructor.name}! +${item.healAmount} score. Score: ${score}`);
+                         const type = item instanceof GoldenChicken ? "Golden Chicken" : item.constructor.name;
+                         console.log(`Collected ${type}! +${item.healAmount} score. Score: ${score}`);
                      }
                 }
             }
@@ -824,24 +1215,19 @@ function update(deltaTime) {
             for (let i = monsters.length - 1; i >= 0; i--) {
                 const monster = monsters[i];
                 if (monster.isActive) {
-                    let collisionBounds = monster; // Default bounds
+                    let collisionBounds = monster; 
                     if (monster instanceof TreeMonster && monster.hasFallen) {
-                        // Use special bounds for fallen tree
                         collisionBounds = monster.getFallingBounds();
                     }
                     
-                    if (checkRectCollision(player, collisionBounds)) {
-                        if (monster instanceof RockMonster) {
+                    // Damage from Lumberjack/Tree is handled in their respective updates.
+                    // Only check collision for direct-damage monsters like Rocks.
+                    if (monster instanceof RockMonster && checkRectCollision(player, collisionBounds)) {
                             console.log("Hit by Rock!");
                             player.takeHit(monster.damage);
-                            monster.isActive = false;
-                        }
-                        // Damage from Tree only applies AFTER it has fallen (hasFallen=true)
-                        else if (monster instanceof TreeMonster && monster.hasFallen) {
-                             // Damage is now applied within the Tree's update when fall completes
-                             // So we might not need to check here again, but can leave as safeguard?
-                        }
+                            monster.isActive = false; // Rock disappears on hit
                     }
+                     // NOTE: If adding other monsters that deal damage purely on collision (no cooldown/state), check them here.
                 }
             }
         }
@@ -850,9 +1236,7 @@ function update(deltaTime) {
     // Clean up inactive objects
     food = food.filter(f => f.isActive);
     monsters = monsters.filter(m => m.isActive);
-    particles = particles.filter(p => p.isActive); // Clean up dead particles
-
-    // console.log("update finished."); // Remove log
+    particles = particles.filter(p => p.isActive);
 }
 
 // --- Day/Night Cycle Logic ---
@@ -892,15 +1276,36 @@ function handleDayNightCycle() {
 
 // --- Spawning/Clearing Functions ---
 function spawnInitialMonsters() {
-    monsters = []; // Clear existing monsters
-    for (let i = 0; i < NUM_MONSTERS_INITIAL; i++) {
+    monsters = []; // Clear existing monsters first
+    console.log(`Spawning monsters for Night ${daysSurvived + 1}`);
+
+    // Base monsters (Trees)
+    const baseMonsters = NUM_MONSTERS_INITIAL;
+    for (let i = 0; i < baseMonsters; i++) {
+        // Ensure trees spawn within ground bounds mostly
         const x = Math.random() * SCREEN_WIDTH;
-        const y = Math.random() * SCREEN_HEIGHT;
-        // Start with only Trees
+        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
+        const y = groundLine + Math.random() * (SCREEN_HEIGHT * 0.9);
         monsters.push(new TreeMonster(x, y));
     }
-    console.log(`Spawned ${monsters.length} initial trees.`);
-    // Rocks will now spawn over time
+
+    // Spawn Lumberjack boss from Night 1 onwards
+    if (daysSurvived >= 0) { // Changed from 3 to 0 to spawn from first night
+         console.log("Spawning Lumberjack!");
+         // Spawn somewhere initially off-screen or edge?
+         const edgeMargin = 50;
+         const spawnX = Math.random() < 0.5 ? -edgeMargin : SCREEN_WIDTH + edgeMargin;
+         const spawnY = Math.random() * SCREEN_HEIGHT;
+         // Make sure player exists before creating lumberjack that targets it
+         if (player) {
+            monsters.push(new Lumberjack(spawnX, spawnY));
+         } else {
+             console.error("Cannot spawn Lumberjack, player not initialized yet!");
+         }
+    }
+
+    console.log(`Spawned ${monsters.length} initial monsters.`);
+    // Rocks will still spawn over time via handleDayNightCycle
 }
 
 function spawnRock() {
@@ -922,17 +1327,38 @@ function clearMonsters() {
 }
 
 function spawnFood() {
-    food = []; // Clear existing
-    for (let i = 0; i < NUM_FOOD; i++) { // Use updated NUM_FOOD
+    food = [];
+    const spawnGoldenChicken = daysSurvived >= 0; // Chickens from Day 1
+    const goldenChickenChance = 0.25; // Increased chance (25%)
+
+    for (let i = 0; i < NUM_FOOD; i++) { 
         const x = Math.random() * SCREEN_WIDTH;
-        const y = Math.random() * SCREEN_HEIGHT;
-        if (Math.random() < 0.6) { 
-            food.push(new Rabbit(x, y));
-        } else {
-            food.push(new Pig(x, y));
+        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
+        const y = groundLine + Math.random() * (SCREEN_HEIGHT * 0.9); 
+
+        let spawned = false;
+        if (spawnGoldenChicken && Math.random() < goldenChickenChance) {
+            // Ensure chicken spawn position is valid
+             const safeX = Math.max(25 / 2, Math.min(SCREEN_WIDTH - 25 / 2, x)); // Use chicken width
+             const safeY = Math.max(groundLine + 25 / 2, Math.min(SCREEN_HEIGHT - 25 / 2, y)); // Use chicken height
+            food.push(new GoldenChicken(safeX, safeY));
+            spawned = true;
+        }
+
+        if (!spawned) {
+            // Ensure spawn position is within bounds for rabbit/pig
+             const size = (Math.random() < 0.6) ? RABBIT_SIZE : PIG_SIZE;
+             const safeX = Math.max(size.width / 2, Math.min(SCREEN_WIDTH - size.width / 2, x));
+             const safeY = Math.max(groundLine + size.height / 2, Math.min(SCREEN_HEIGHT - size.height / 2, y));
+
+            if (size === RABBIT_SIZE) { 
+                food.push(new Rabbit(safeX, safeY));
+            } else {
+                food.push(new Pig(safeX, safeY));
+            }
         }
     }
-    console.log(`Spawned ${food.length} food items.`);
+    console.log(`Spawned ${food.length} food items (Day ${daysSurvived + 1}). Includes Golden Chickens: ${spawnGoldenChicken}`);
 }
 
 function clearFood() {
@@ -1078,7 +1504,33 @@ function drawUI(targetCtx) { // Takes main ctx as argument now
         targetCtx.fillStyle = COLOR_UI_TEXT;
         targetCtx.textAlign = 'left'; 
         // targetCtx.fillText("Press R to Restart", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 60);
+        showRestartButton();
+    } else {
+        hideRestartButton();
     }
+
+    // Add 'by o'reilly' label to bottom right
+    const labelText = "by o'reilly";
+    const labelMargin = 8; // pixels from edge (slightly adjusted)
+    const labelFont = "15px 'Courier New', monospace"; // Smaller font
+    const labelColor = '#AAAAAA'; // Lighter grey color
+    const labelShadowColor = '#333333'; // Darker shadow
+
+    targetCtx.font = labelFont;
+    targetCtx.textAlign = 'right';
+    targetCtx.textBaseline = 'bottom';
+
+    // Draw shadow first
+    targetCtx.fillStyle = labelShadowColor;
+    targetCtx.fillText(labelText, SCREEN_WIDTH - labelMargin + 1, SCREEN_HEIGHT - labelMargin + 1); // Offset shadow
+    // Draw main text
+    targetCtx.fillStyle = labelColor;
+    targetCtx.fillText(labelText, SCREEN_WIDTH - labelMargin, SCREEN_HEIGHT - labelMargin);
+
+    // Reset alignment, baseline, and font if modified
+    targetCtx.textAlign = 'left';
+    targetCtx.textBaseline = 'top';
+    targetCtx.font = ARCADE_FONT; // Reset to default UI font
 }
 
 // --- Attack Handling ---
@@ -1213,6 +1665,36 @@ function init() {
     }
     console.log("init finished.");
 }
+
+// --- Restart Button Logic ---
+const restartBtn = document.getElementById('restartBtn');
+
+function showRestartButton() {
+    restartBtn.style.display = 'block';
+}
+function hideRestartButton() {
+    restartBtn.style.display = 'none';
+}
+restartBtn.onclick = function() {
+    init();
+    hideRestartButton();
+};
+
+// --- Music Logic ---
+const audio = document.getElementById('bgMusic');
+const musicBtn = document.getElementById('musicBtn');
+let isMusicPlaying = false;
+
+musicBtn.addEventListener('click', () => {
+  if (isMusicPlaying) {
+    audio.pause();
+    musicBtn.textContent = '🔊';
+  } else {
+    audio.play();
+    musicBtn.textContent = '🔇';
+  }
+  isMusicPlaying = !isMusicPlaying;
+});
 
 // console.log("Script end, calling init()."); // Remove log
 init(); 

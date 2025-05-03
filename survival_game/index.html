@@ -8,6 +8,11 @@
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <button id="restartBtn" style="display:none; position: absolute; left: 50%; top: 60%; transform: translate(-50%, 0); font-size: 2rem; padding: 1rem 2rem; background: #222; color: #FFD700; border: 2px solid #FFD700; border-radius: 10px; cursor: pointer; z-index: 10;">Restart</button>
+    <audio id="bgMusic" loop>
+      <source src="assets/background_music.mp3" type="audio/mpeg">
+    </audio>
+    <button id="musicBtn" style="position: absolute; right: 20px; top: 20px; font-size: 1.2rem; padding: 0.5rem 1rem; background: #222; color: #FFD700; border: 2px solid #FFD700; border-radius: 8px; cursor: pointer; z-index: 10;">🔊</button>
     <script src="script.js"></script>
 </body>
 </html> 
