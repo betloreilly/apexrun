@@ -98,10 +98,29 @@ const MAX_ACTIVE_ROCKS = 10; // Maximum rocks on screen at once
 // Spawn numbers
 const NUM_MONSTERS_INITIAL = 5; // Initial number of trees at night start
 
+// Dog Constants
+const DOG_SPEED = 130; // Slightly faster than fox?
+const DOG_WIDTH = 45;
+const DOG_HEIGHT = 40;
+const DOG_COLOR = '#8B4513'; // Brown
+const DOG_ATTACK_RANGE = 40;
+const DOG_ATTACK_DAMAGE = 5; // Score damage
+const DOG_ATTACK_COOLDOWN = 1.5; // Seconds between attacks
+const MAX_DOGS = 3; // Maximum dogs on screen
+
+// Fence Constants
+const FENCE_X = SCREEN_WIDTH * 0.4; // Shift left more
+const FENCE_Y = SCREEN_HEIGHT * 0.1;
+const FENCE_WIDTH = SCREEN_WIDTH * 0.55; // Cover 55% width (larger)
+const FENCE_HEIGHT = SCREEN_HEIGHT * 0.7; // Cover 70% height (larger)
+const FENCE_POST_WIDTH = 10;
+const FENCE_RAIL_HEIGHT = 6;
+const FENCE_COLOR = '#A0522D'; // Sienna brown, same as old roof
+
 // --- Game State ---
 let isDay = true;
-let cycleTimer = Date.now();
-let currentCycleDuration = DAY_DURATION;
+// let cycleTimer = Date.now(); // REMOVE - Use dayNightCycleStart
+// let currentCycleDuration = DAY_DURATION; // REMOVE - Use DAY_DURATION/NIGHT_DURATION directly
 let daysSurvived = 0;
 let score = INITIAL_SCORE;
 let lastTime = 0;
@@ -111,6 +130,9 @@ let food = [];
 let particles = []; // Add particles array
 let gameOver = false; // Add Game Over flag
 let rockSpawnTimer = ROCK_SPAWN_INTERVAL; // Timer for spawning rocks
+let dayNightCycleStart = performance.now(); // Use performance.now() for consistency
+let gameTimeThisCycle = 0;
+let gameTimeTotal = 0; // Add a total game time tracker
 
 // --- Canvas Setup ---
 canvas.width = SCREEN_WIDTH;
@@ -580,10 +602,8 @@ class Rabbit extends GameObject {
             this.moveTimer = this.changeDirectionInterval * (0.5 + Math.random());
         }
 
-        const prevX = this.x;
-        const prevY = this.y;
-        this.x += this.dx * deltaTime;
-        this.y += this.dy * deltaTime;
+        let nextX = this.x + this.dx * deltaTime;
+        let nextY = this.y + this.dy * deltaTime;
 
         // Hopping animation when moving
         if (Math.abs(this.dx) > 1 || Math.abs(this.dy) > 1) {
@@ -594,22 +614,37 @@ class Rabbit extends GameObject {
              this.hopOffset = 0;
         }
 
-        // Boundary check
+        // --- Fence Boundary check --- 
         const halfW = this.width / 2;
         const halfH = this.height / 2;
-        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
+        const fenceLeft = FENCE_X + halfW;
+        const fenceRight = FENCE_X + FENCE_WIDTH - halfW;
+        const fenceTop = FENCE_Y + halfH;
+        const fenceBottom = FENCE_Y + FENCE_HEIGHT - halfH;
 
-        if (this.x - halfW < 0 || this.x + halfW > SCREEN_WIDTH) {
-            this.dx *= -1;
-            this.x = Math.max(halfW, Math.min(SCREEN_WIDTH - halfW, this.x));
+        if (nextX < fenceLeft) {
+            nextX = fenceLeft; 
+            this.dx *= -1; // Bounce right
+            this.moveTimer = 0; // Change direction sooner after hitting wall
+        } else if (nextX > fenceRight) {
+            nextX = fenceRight;
+            this.dx *= -1; // Bounce left
+             this.moveTimer = 0;
         }
-        if (this.y + halfH > SCREEN_HEIGHT) {
-            this.dy = Math.abs(this.dy) * -1;
-            this.y = SCREEN_HEIGHT - halfH;
-        } else if (this.y - halfH < groundLine) {
-             this.dy = Math.abs(this.dy);
-             this.y = groundLine + halfH;
+
+        if (nextY < fenceTop) {
+            nextY = fenceTop;
+            this.dy *= -1; // Bounce down
+             this.moveTimer = 0;
+        } else if (nextY > fenceBottom) {
+            nextY = fenceBottom;
+            this.dy *= -1; // Bounce up
+             this.moveTimer = 0;
         }
+        
+        // Apply final position
+        this.x = nextX;
+        this.y = nextY;
     }
 
     setRandomDirection() {
@@ -718,26 +753,40 @@ class Pig extends GameObject {
             this.moveTimer = this.changeDirectionInterval * (0.5 + Math.random());
         }
 
-        this.x += this.dx * deltaTime;
-        this.y += this.dy * deltaTime;
+        let nextX = this.x + this.dx * deltaTime;
+        let nextY = this.y + this.dy * deltaTime;
 
-        // Boundary check
+        // --- Fence Boundary check --- 
         const halfW = this.width / 2;
         const halfH = this.height / 2;
-        const groundLine = SCREEN_HEIGHT * (1 - 0.9); // Calculate ground line (10% sky)
+        const fenceLeft = FENCE_X + halfW;
+        const fenceRight = FENCE_X + FENCE_WIDTH - halfW;
+        const fenceTop = FENCE_Y + halfH;
+        const fenceBottom = FENCE_Y + FENCE_HEIGHT - halfH;
 
-        if (this.x - halfW < 0 || this.x + halfW > SCREEN_WIDTH) {
-            this.dx *= -1;
-            this.x = Math.max(halfW, Math.min(SCREEN_WIDTH - halfW, this.x));
+        if (nextX < fenceLeft) {
+            nextX = fenceLeft; 
+            this.dx *= -1; // Bounce right
+            this.moveTimer = 0; // Change direction sooner
+        } else if (nextX > fenceRight) {
+            nextX = fenceRight;
+            this.dx *= -1; // Bounce left
+             this.moveTimer = 0;
         }
-        // Prevent moving above ground line & handle bottom boundary
-        if (this.y + halfH > SCREEN_HEIGHT) { // Hit bottom
-            this.dy = Math.abs(this.dy) * -1; // Force bounce up
-            this.y = SCREEN_HEIGHT - halfH;
-        } else if (this.y - halfH < groundLine) { // Hit top (ground line)
-             this.dy = Math.abs(this.dy); // Force bounce down
-             this.y = groundLine + halfH;
+
+        if (nextY < fenceTop) {
+            nextY = fenceTop;
+            this.dy *= -1; // Bounce down
+             this.moveTimer = 0;
+        } else if (nextY > fenceBottom) {
+            nextY = fenceBottom;
+            this.dy *= -1; // Bounce up
+             this.moveTimer = 0;
         }
+        
+        // Apply final position
+        this.x = nextX;
+        this.y = nextY;
     }
 
     setRandomDirection() {
@@ -831,10 +880,8 @@ class GoldenChicken extends GameObject {
             this.moveTimer = this.changeDirectionInterval * (0.5 + Math.random());
         }
 
-        const prevX = this.x;
-        const prevY = this.y;
-        this.x += this.dx * deltaTime;
-        this.y += this.dy * deltaTime;
+        let nextX = this.x + this.dx * deltaTime;
+        let nextY = this.y + this.dy * deltaTime;
 
         // Bobbing effect
         this.bobOffset = Math.sin(Date.now() * 0.01 * this.bobSpeed) * 3;
@@ -846,22 +893,37 @@ class GoldenChicken extends GameObject {
              this.legAngle = 0; // Static legs when stopped
         }
 
-        // Boundary check (similar to Rabbit/Pig)
+         // --- Fence Boundary check --- 
         const halfW = this.width / 2;
         const halfH = this.height / 2;
-        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
+        const fenceLeft = FENCE_X + halfW;
+        const fenceRight = FENCE_X + FENCE_WIDTH - halfW;
+        const fenceTop = FENCE_Y + halfH;
+        const fenceBottom = FENCE_Y + FENCE_HEIGHT - halfH;
 
-        if (this.x - halfW < 0 || this.x + halfW > SCREEN_WIDTH) {
-            this.dx *= -1;
-            this.x = Math.max(halfW, Math.min(SCREEN_WIDTH - halfW, this.x));
+        if (nextX < fenceLeft) {
+            nextX = fenceLeft; 
+            this.dx *= -1; // Bounce right
+            this.moveTimer = 0; // Change direction sooner
+        } else if (nextX > fenceRight) {
+            nextX = fenceRight;
+            this.dx *= -1; // Bounce left
+             this.moveTimer = 0;
         }
-        if (this.y + halfH > SCREEN_HEIGHT) {
-            this.dy = Math.abs(this.dy) * -1;
-            this.y = SCREEN_HEIGHT - halfH;
-        } else if (this.y - halfH < groundLine) {
-             this.dy = Math.abs(this.dy);
-             this.y = groundLine + halfH;
+
+        if (nextY < fenceTop) {
+            nextY = fenceTop;
+            this.dy *= -1; // Bounce down
+             this.moveTimer = 0;
+        } else if (nextY > fenceBottom) {
+            nextY = fenceBottom;
+            this.dy *= -1; // Bounce up
+             this.moveTimer = 0;
         }
+        
+        // Apply final position
+        this.x = nextX;
+        this.y = nextY;
     }
 
     setRandomDirection() {
@@ -1130,6 +1192,126 @@ class Lumberjack extends GameObject {
     }
 }
 
+// --- New Dog Class ---
+class Dog extends GameObject {
+    constructor(x, y) {
+        super(x, y, DOG_COLOR);
+        this.width = DOG_WIDTH;
+        this.height = DOG_HEIGHT;
+        this.speed = DOG_SPEED;
+        this.attackRange = DOG_ATTACK_RANGE;
+        this.attackDamage = DOG_ATTACK_DAMAGE;
+        this.attackCooldown = DOG_ATTACK_COOLDOWN;
+        this.lastAttackTime = 0;
+        this.dx = 0; // For visual direction flipping
+        this.dy = 0; // Not used for movement logic here, just chase
+        this.isActive = true; // Dogs are active by default but logic checks isDay
+    }
+
+    update(deltaTime, player, totalGameTime) { // Pass totalGameTime
+        if (!isDay || !this.isActive || gameOver || !player) {
+            // Dogs are only active and attack during the day
+            return;
+        }
+
+        // --- Chase Logic ---
+        const targetX = player.x;
+        const targetY = player.y;
+        const angle = Math.atan2(targetY - this.y, targetX - this.x);
+        const moveX = Math.cos(angle) * this.speed * deltaTime;
+        const moveY = Math.sin(angle) * this.speed * deltaTime;
+
+        this.x += moveX;
+        this.y += moveY;
+        // Store speed-independent direction for drawing flip
+         if (Math.abs(moveX) > 0.1) { // Check threshold to avoid jitter
+             this.dx = moveX;
+         }
+
+
+        // Keep within bounds (simple clamp)
+        this.x = Math.max(this.width / 2, Math.min(SCREEN_WIDTH - this.width / 2, this.x));
+        this.y = Math.max(this.height / 2, Math.min(SCREEN_HEIGHT - this.height / 2, this.y));
+
+
+        // --- Attack Logic ---
+        const currentTime = totalGameTime / 1000; // Use total game time
+        const distToPlayer = Math.hypot(player.x - this.x, player.y - this.y);
+
+        if (distToPlayer <= this.attackRange && (currentTime - this.lastAttackTime) > this.attackCooldown) {
+            console.log("Dog attacks Player!");
+            player.takeHit(this.attackDamage);
+            this.lastAttackTime = currentTime;
+            // Add a visual indicator for attack? (e.g., brief color change)
+        }
+    }
+
+    draw(ctx) {
+         if (!this.isActive) return; // Don't draw if inactive
+
+        const bodyW = this.width * 0.8;
+        const bodyH = this.height * 0.6;
+        const legH = this.height * 0.4;
+        const legW = this.width * 0.15;
+        const headSize = this.width * 0.4;
+        const tailW = this.width * 0.5;
+        const tailH = this.height * 0.2;
+        const earSize = headSize * 0.4;
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+         // Use the stored dx from update to determine facing direction
+         const scaleX = (this.dx === 0) ? 1 : Math.sign(this.dx);
+        ctx.scale(scaleX, 1); // Flip based on horizontal movement
+
+        // Legs
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(-bodyW * 0.4, bodyH / 2 - legH * 0.1, legW, legH); // Back left
+        ctx.fillRect(-bodyW * 0.15, bodyH / 2 - legH * 0.1, legW, legH); // Back right
+        ctx.fillRect( bodyW * 0.1, bodyH / 2 - legH * 0.1, legW, legH); // Front left
+        ctx.fillRect( bodyW * 0.35, bodyH / 2 - legH * 0.1, legW, legH); // Front right
+        ctx.globalAlpha = 1.0;
+
+        // Tail (simple wagging up/down ellipse?)
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.ellipse(-bodyW * 0.6, -bodyH * 0.1, tailW / 2, tailH / 2, -Math.PI / 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH);
+
+        // Head (square-ish)
+        const headX = bodyW * 0.4;
+        const headY = -bodyH * 0.1;
+        ctx.fillRect(headX - headSize / 2, headY - headSize / 2, headSize, headSize);
+
+        // Ears (floppy)
+        ctx.fillStyle = '#A0522D'; // Slightly darker ears
+        ctx.fillRect(headX - earSize * 1.2, headY - headSize * 0.4, earSize, earSize * 1.2); // Left ear
+        ctx.fillRect(headX + earSize * 0.2, headY - headSize * 0.4, earSize, earSize * 1.2); // Right ear
+
+
+        // Snout (smaller rectangle)
+         ctx.fillStyle = '#C68642'; // Lighter snout
+         const snoutW = headSize * 0.5;
+         const snoutH = headSize * 0.4;
+         ctx.fillRect(headX + headSize * 0.4, headY - snoutH / 2, snoutW, snoutH);
+
+
+        // Eye
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(headX + headSize * 0.1, headY - headSize * 0.1, 2, 0, Math.PI * 2); // Simple black eye
+        ctx.fill();
+
+
+        ctx.restore();
+    }
+}
+
 // --- Collision Detection ---
 function checkRectCollision(obj1, obj2) {
     // Calculates bounding boxes based on center coordinates and width/height
@@ -1181,7 +1363,24 @@ function update(deltaTime) {
         return; // Stop updates if game is over
     }
 
+    // Update total game time
+    gameTimeTotal += deltaTime * 1000; // Keep track in ms
+
     handleDayNightCycle();
+
+    // --- Continuous Rock Spawning at Night ---
+    if (!isDay && !gameOver) {
+        rockSpawnTimer -= deltaTime; // Decrement timer
+        if (rockSpawnTimer <= 0) {
+            // Count active rocks
+            const activeRocks = monsters.filter(m => m instanceof RockMonster && m.isActive).length;
+            if (activeRocks < MAX_ACTIVE_ROCKS) {
+                spawnRock(); // Spawn a single rock
+            }
+            rockSpawnTimer = ROCK_SPAWN_INTERVAL; // Reset timer
+        }
+    }
+    // --- End Continuous Rock Spawning ---
 
     if (player) {
         player.update(deltaTime);
@@ -1190,7 +1389,15 @@ function update(deltaTime) {
     }
 
     // Update NPCs
-    monsters.forEach(monster => monster.update(deltaTime));
+    monsters.forEach(monster => {
+        if (monster.isActive) {
+            if (monster instanceof Dog) {
+                 monster.update(deltaTime, player, gameTimeTotal); // Pass player and gameTimeTotal
+            } else {
+                 monster.update(deltaTime); // Existing update calls for Tree, Rock, Lumberjack
+            }
+        }
+    });
     food.forEach(item => item.update(deltaTime));
     particles.forEach(p => p.update(deltaTime));
 
@@ -1241,71 +1448,126 @@ function update(deltaTime) {
 
 // --- Day/Night Cycle Logic ---
 function handleDayNightCycle() {
-    const now = Date.now();
-    if (now - cycleTimer > currentCycleDuration) {
-        isDay = !isDay;
-        cycleTimer = now;
-        if (isDay) {
-            currentCycleDuration = DAY_DURATION;
-            daysSurvived++;
-            console.log(`Transitioning to Day ${daysSurvived + 1}`);
-            clearMonsters(); // Clear remaining night monsters
-            spawnFood();
-        } else {
-            currentCycleDuration = NIGHT_DURATION;
-            console.log('Transitioning to Night');
-            clearFood();
-            spawnInitialMonsters(); // Spawn initial trees
-            rockSpawnTimer = ROCK_SPAWN_INTERVAL; // Reset rock spawn timer
-        }
-    }
+    const currentTime = performance.now();
+    // How long since the current cycle started?
+    const elapsedTime = (currentTime - dayNightCycleStart) / 1000; // in seconds
+    const targetDuration = (isDay ? DAY_DURATION / 1000 : NIGHT_DURATION / 1000);
 
-    // --- Continuous Rock Spawning at Night ---
-    if (!isDay && !gameOver) {
-        rockSpawnTimer -= (now - lastTime) / 1000; // Use deltaTime essentially
-        if (rockSpawnTimer <= 0) {
-            // Count active rocks
-            const activeRocks = monsters.filter(m => m instanceof RockMonster && m.isActive).length;
-            if (activeRocks < MAX_ACTIVE_ROCKS) {
-                spawnRock(); // Spawn a single rock
-            }
-            rockSpawnTimer = ROCK_SPAWN_INTERVAL; // Reset timer
+    // --- DEBUG LOGGING --- 
+    // Only log occasionally to avoid flooding console
+    if (Math.random() < 0.02) { // Log roughly every 50 frames (at 60fps)
+        console.log(`Cycle Check: isDay=${isDay}, Elapsed=${elapsedTime.toFixed(2)}s, Target=${targetDuration}s, Start=${dayNightCycleStart.toFixed(0)}`);
+    }
+    // --- END DEBUG LOGGING ---
+
+    // Is elapsed time >= the duration required for the current cycle (day or night)?
+    if (elapsedTime >= targetDuration) {
+        // --- Transition --- 
+        console.log(`TRANSITIONING! Elapsed=${elapsedTime.toFixed(2)}s >= Target=${targetDuration}s. Flipping isDay from ${isDay} to ${!isDay}.`); // Log transition
+        isDay = !isDay; // Flip state
+        dayNightCycleStart = currentTime; // Reset START time for the NEW cycle
+        gameTimeThisCycle = 0; // Reset elapsed time WITHIN the cycle
+        rockSpawnTimer = ROCK_SPAWN_INTERVAL; // << Reset rock spawn timer on transition
+
+        if (isDay) {
+            daysSurvived++;
+            console.log(`--- Starting Day ${daysSurvived + 1} ---`);
+            // Day transition logic
+            clearMonsters(); // Clear night monsters (Trees, Rocks, Lumberjack)
+            clearFood(); // Clear old food
+            spawnFood(); // Spawn new food for the day
+            spawnInitialMonsters(); // Spawn day monsters (Dogs)
+
+        } else {
+            console.log(`--- Starting Night ${daysSurvived + 1} ---`);
+            // Night transition logic
+            clearMonsters(); // Clear day monsters (Dogs)
+             clearFood(); // Optionally clear food at night? Or let it persist? Keeping it for now.
+            spawnInitialMonsters(); // Spawn night monsters (Trees, Rocks, Lumberjack)
+
         }
+        // Update UI immediately (if needed, otherwise draw loop handles it)
+        // updateTimeOfDayDisplay(); // Assuming this exists or is handled in drawUI
+
+        // Ensure monsters are active/inactive based on day/night
+         monsters.forEach(m => {
+             if (m instanceof Dog) m.isActive = isDay;
+             if (m instanceof TreeMonster) m.isActive = !isDay;
+             if (m instanceof RockMonster) m.isActive = !isDay;
+             if (m instanceof Lumberjack) m.isActive = !isDay;
+         });
+    } else {
+        // --- No Transition Yet ---
+        // Update how much time has passed within the CURRENT cycle (for UI display)
+        gameTimeThisCycle = elapsedTime;
     }
 }
 
 // --- Spawning/Clearing Functions ---
 function spawnInitialMonsters() {
-    monsters = []; // Clear existing monsters first
-    console.log(`Spawning monsters for Night ${daysSurvived + 1}`);
+    // Don't clear here, handleDayNightCycle clears based on transition
+    // clearMonsters();
 
-    // Base monsters (Trees)
-    const baseMonsters = NUM_MONSTERS_INITIAL;
-    for (let i = 0; i < baseMonsters; i++) {
-        // Ensure trees spawn within ground bounds mostly
-        const x = Math.random() * SCREEN_WIDTH;
-        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
-        const y = groundLine + Math.random() * (SCREEN_HEIGHT * 0.9);
-        monsters.push(new TreeMonster(x, y));
-    }
-
-    // Spawn Lumberjack boss from Night 1 onwards
-    if (daysSurvived >= 0) { // Changed from 3 to 0 to spawn from first night
-         console.log("Spawning Lumberjack!");
-         // Spawn somewhere initially off-screen or edge?
-         const edgeMargin = 50;
-         const spawnX = Math.random() < 0.5 ? -edgeMargin : SCREEN_WIDTH + edgeMargin;
-         const spawnY = Math.random() * SCREEN_HEIGHT;
-         // Make sure player exists before creating lumberjack that targets it
-         if (player) {
-            monsters.push(new Lumberjack(spawnX, spawnY));
-         } else {
+    if (!isDay) {
+        console.log(`Spawning monsters for Night ${daysSurvived + 1}`);
+        // Base monsters (Trees)
+        const baseMonsters = NUM_MONSTERS_INITIAL;
+        for (let i = 0; i < baseMonsters; i++) {
+            const x = Math.random() * SCREEN_WIDTH;
+            const groundLine = SCREEN_HEIGHT * 0.1; // Assuming 10% sky
+            const y = groundLine + Math.random() * (SCREEN_HEIGHT * 0.9);
+            monsters.push(new TreeMonster(x, y));
+        }
+         // Rocks spawn continuously via spawnRock, triggered elsewhere (or needs adding)
+         // Spawn Lumberjack boss from Night 1 onwards
+        if (daysSurvived >= 0 && player) {
+             console.log("Spawning Lumberjack!");
+             const edgeMargin = 50;
+             const spawnX = Math.random() < 0.5 ? -edgeMargin : SCREEN_WIDTH + edgeMargin;
+             const spawnY = Math.random() * SCREEN_HEIGHT;
+             monsters.push(new Lumberjack(spawnX, spawnY));
+        } else if (!player) {
              console.error("Cannot spawn Lumberjack, player not initialized yet!");
-         }
+        }
+         // Ensure rocks are spawned continuously at night (add if logic was removed)
+          // rockSpawnTimer logic might need to be added back into the main update loop or here if rocks only spawn initially.
+         // Example continuous spawn logic (needs timer management in update):
+         // if (rockSpawnTimer <= 0) {
+         //     const activeRocks = monsters.filter(m => m instanceof RockMonster && m.isActive).length;
+         //     if (activeRocks < MAX_ACTIVE_ROCKS) spawnRock();
+         //     rockSpawnTimer = ROCK_SPAWN_INTERVAL;
+         // }
+
+    } else { // isDay
+        console.log(`Spawning monsters for Day ${daysSurvived + 1}`);
+        // Spawn Dogs (only during the day)
+        const currentDogs = monsters.filter(m => m instanceof Dog).length; // Should be 0 after clearMonsters
+        const dogsToSpawn = MAX_DOGS - currentDogs;
+        console.log(`Spawning ${dogsToSpawn} dogs.`);
+        for (let i = 0; i < dogsToSpawn; i++) {
+            let spawnX, spawnY, tooClose;
+            const maxAttempts = 10; // Prevent infinite loop
+            let attempts = 0;
+            do {
+                tooClose = false;
+                spawnX = Math.random() * SCREEN_WIDTH;
+                spawnY = Math.random() * SCREEN_HEIGHT;
+                // Avoid spawning too close to player
+                if (player && Math.hypot(player.x - spawnX, player.y - spawnY) < 150) {
+                    tooClose = true;
+                }
+                attempts++;
+            } while (tooClose && attempts < maxAttempts);
+
+             if (!tooClose) { // Only spawn if a suitable spot was found
+                monsters.push(new Dog(spawnX, spawnY));
+            } else {
+                 console.warn("Could not find suitable spawn location for dog after", maxAttempts, "attempts.");
+             }
+        }
     }
 
-    console.log(`Spawned ${monsters.length} initial monsters.`);
-    // Rocks will still spawn over time via handleDayNightCycle
+    console.log(`Total monsters after spawn: ${monsters.length}`);
 }
 
 function spawnRock() {
@@ -1331,34 +1593,44 @@ function spawnFood() {
     const spawnGoldenChicken = daysSurvived >= 0; // Chickens from Day 1
     const goldenChickenChance = 0.25; // Increased chance (25%)
 
-    for (let i = 0; i < NUM_FOOD; i++) { 
-        const x = Math.random() * SCREEN_WIDTH;
-        const groundLine = SCREEN_HEIGHT * (1 - 0.9);
-        const y = groundLine + Math.random() * (SCREEN_HEIGHT * 0.9); 
+    console.log(`Spawning food inside fence: X=${FENCE_X.toFixed(0)} Y=${FENCE_Y.toFixed(0)} W=${FENCE_WIDTH.toFixed(0)} H=${FENCE_HEIGHT.toFixed(0)}`);
+
+    for (let i = 0; i < NUM_FOOD; i++) {
+        // Calculate spawn position WITHIN the fence boundaries
+        const margin = 10; // Small margin from the edge
+        const x = FENCE_X + margin + Math.random() * (FENCE_WIDTH - 2 * margin);
+        // const groundLine = SCREEN_HEIGHT * (1 - 0.9); // No longer needed for Y constraint
+        const y = FENCE_Y + margin + Math.random() * (FENCE_HEIGHT - 2 * margin); 
 
         let spawned = false;
         if (spawnGoldenChicken && Math.random() < goldenChickenChance) {
-            // Ensure chicken spawn position is valid
-             const safeX = Math.max(25 / 2, Math.min(SCREEN_WIDTH - 25 / 2, x)); // Use chicken width
-             const safeY = Math.max(groundLine + 25 / 2, Math.min(SCREEN_HEIGHT - 25 / 2, y)); // Use chicken height
+            // Ensure chicken width/height fits if necessary (using margin helps)
+            const chickenWidth = 25;
+            const chickenHeight = 25;
+             const safeX = Math.max(FENCE_X + chickenWidth/2 + margin, Math.min(FENCE_X + FENCE_WIDTH - chickenWidth/2 - margin, x)); 
+             const safeY = Math.max(FENCE_Y + chickenHeight/2 + margin, Math.min(FENCE_Y + FENCE_HEIGHT - chickenHeight/2 - margin, y)); 
             food.push(new GoldenChicken(safeX, safeY));
             spawned = true;
+            // console.log(`Spawned Golden Chicken at ${safeX.toFixed(0)}, ${safeY.toFixed(0)}`); // Debug log
         }
 
         if (!spawned) {
-            // Ensure spawn position is within bounds for rabbit/pig
-             const size = (Math.random() < 0.6) ? RABBIT_SIZE : PIG_SIZE;
-             const safeX = Math.max(size.width / 2, Math.min(SCREEN_WIDTH - size.width / 2, x));
-             const safeY = Math.max(groundLine + size.height / 2, Math.min(SCREEN_HEIGHT - size.height / 2, y));
+            const isRabbit = Math.random() < 0.6;
+            const size = isRabbit ? RABBIT_SIZE : PIG_SIZE;
+            // Ensure spawn position fits animal size within fence
+             const safeX = Math.max(FENCE_X + size.width / 2 + margin, Math.min(FENCE_X + FENCE_WIDTH - size.width / 2 - margin, x));
+             const safeY = Math.max(FENCE_Y + size.height / 2 + margin, Math.min(FENCE_Y + FENCE_HEIGHT - size.height / 2 - margin, y));
 
-            if (size === RABBIT_SIZE) { 
+            if (isRabbit) { 
                 food.push(new Rabbit(safeX, safeY));
+                // console.log(`Spawned Rabbit at ${safeX.toFixed(0)}, ${safeY.toFixed(0)}`); // Debug log
             } else {
                 food.push(new Pig(safeX, safeY));
+                // console.log(`Spawned Pig at ${safeX.toFixed(0)}, ${safeY.toFixed(0)}`); // Debug log
             }
         }
     }
-    console.log(`Spawned ${food.length} food items (Day ${daysSurvived + 1}). Includes Golden Chickens: ${spawnGoldenChicken}`);
+    console.log(`Spawned ${food.length} food items (Day ${daysSurvived + 1}) inside fence.`);
 }
 
 function clearFood() {
@@ -1368,6 +1640,7 @@ function clearFood() {
 
 // --- Background Drawing (Modified to draw on main ctx) ---
 function drawBackground(targetCtx) {
+     // RESTORE Old Sky/Ground Style
     const groundRatio = 0.9; // 90% ground
     const groundLevel = SCREEN_HEIGHT * (1 - groundRatio);
 
@@ -1379,36 +1652,73 @@ function drawBackground(targetCtx) {
     targetCtx.fillStyle = isDay ? COLOR_GROUND_DAY : COLOR_GROUND_NIGHT;
     targetCtx.fillRect(0, groundLevel, SCREEN_WIDTH, SCREEN_HEIGHT * groundRatio); // Fill ground area
 
-    // Night specific elements
-    if (!isDay) {
-         // Draw Hill (simple curve over the ground area)
-        const hillHeight = groundLevel * 0.6; // How high the hill peaks into the sky area
-        const hillPeakX = SCREEN_WIDTH * 0.6; // Where the hill peaks (example)
-        targetCtx.fillStyle = COLOR_GROUND_NIGHT; // Use ground color for hill
-        targetCtx.beginPath();
-        targetCtx.moveTo(0, groundLevel); // Start at left ground level
-        // Curve up to a peak and back down
-        targetCtx.quadraticCurveTo(hillPeakX, groundLevel - hillHeight, SCREEN_WIDTH, groundLevel);
-        targetCtx.lineTo(SCREEN_WIDTH, SCREEN_HEIGHT); // Line down to bottom right
-        targetCtx.lineTo(0, SCREEN_HEIGHT); // Line to bottom left
-        targetCtx.closePath();
-        targetCtx.fill();
+    // --- Draw Fence --- 
+    targetCtx.fillStyle = FENCE_COLOR;
+    const numPostsHorizontal = 5;
+    const numPostsVertical = 4;
+    const postSpacingX = FENCE_WIDTH / (numPostsHorizontal - 1);
+    const postSpacingY = FENCE_HEIGHT / (numPostsVertical - 1);
 
-        // Moon (draw after hill)
-        targetCtx.fillStyle = COLOR_MOON;
-        targetCtx.beginPath();
-        // Position moon higher in the small sky area
-        targetCtx.arc(SCREEN_WIDTH * 0.85, groundLevel * 0.4, SCREEN_WIDTH * 0.04, 0, Math.PI * 2);
-        targetCtx.fill();
-
-        // Stars (only in sky area above groundLevel)
-        targetCtx.fillStyle = COLOR_STAR;
-        for (let i = 0; i < 100; i++) { 
-            const x = Math.random() * SCREEN_WIDTH;
-            const y = Math.random() * groundLevel; // Ensure y is within the sky area
-            targetCtx.fillRect(Math.floor(x), Math.floor(y), 2, 2);
-        }
+    // Horizontal Fence Sections (Top and Bottom)
+    for (let i = 0; i < numPostsHorizontal; i++) {
+        const postX = FENCE_X + i * postSpacingX;
+        // Top posts
+        targetCtx.fillRect(postX - FENCE_POST_WIDTH / 2, FENCE_Y, FENCE_POST_WIDTH, FENCE_HEIGHT * 0.4); 
+        // Bottom posts (representing a back fence maybe?)
+        // targetCtx.fillRect(postX - FENCE_POST_WIDTH / 2, FENCE_Y + FENCE_HEIGHT * 0.6, FENCE_POST_WIDTH, FENCE_HEIGHT * 0.4); 
     }
+    // Top Rails
+    targetCtx.fillRect(FENCE_X, FENCE_Y + FENCE_HEIGHT * 0.1, FENCE_WIDTH, FENCE_RAIL_HEIGHT);
+    targetCtx.fillRect(FENCE_X, FENCE_Y + FENCE_HEIGHT * 0.25, FENCE_WIDTH, FENCE_RAIL_HEIGHT);
+    // Bottom Rails
+    // targetCtx.fillRect(FENCE_X, FENCE_Y + FENCE_HEIGHT * 0.7, FENCE_WIDTH, FENCE_RAIL_HEIGHT);
+    // targetCtx.fillRect(FENCE_X, FENCE_Y + FENCE_HEIGHT * 0.85, FENCE_WIDTH, FENCE_RAIL_HEIGHT);
+
+     // Vertical Fence Sections (Left and Right sides)
+     for (let i = 0; i < numPostsVertical; i++) {
+         const postY = FENCE_Y + i * postSpacingY;
+         // Left Posts (excluding corners already drawn)
+         if (i > 0 && i < numPostsVertical -1 ) targetCtx.fillRect(FENCE_X - FENCE_POST_WIDTH / 2, postY, FENCE_POST_WIDTH, FENCE_HEIGHT * 0.4); 
+         // Right Posts (draw full column)
+         targetCtx.fillRect(FENCE_X + FENCE_WIDTH - FENCE_POST_WIDTH / 2, postY, FENCE_POST_WIDTH, FENCE_HEIGHT * 0.4); 
+     }
+     // Left Rails
+     targetCtx.fillRect(FENCE_X, FENCE_Y + FENCE_HEIGHT * 0.1, FENCE_RAIL_HEIGHT, FENCE_HEIGHT);
+     targetCtx.fillRect(FENCE_X + FENCE_WIDTH - FENCE_RAIL_HEIGHT, FENCE_Y + FENCE_HEIGHT * 0.1, FENCE_RAIL_HEIGHT, FENCE_HEIGHT); 
+
+
+    // --- End Fence Drawing ---
+
+     // Night specific elements (Moon, Stars, Hill)
+     if (!isDay) {
+          // Draw Hill (simple curve over the ground area) - RESTORED
+         const hillHeight = groundLevel * 0.6; // How high the hill peaks into the sky area
+         const hillPeakX = SCREEN_WIDTH * 0.6; // Where the hill peaks (example)
+         targetCtx.fillStyle = COLOR_GROUND_NIGHT; // Use ground color for hill
+         targetCtx.beginPath();
+         targetCtx.moveTo(0, groundLevel); // Start at left ground level
+         // Curve up to a peak and back down
+         targetCtx.quadraticCurveTo(hillPeakX, groundLevel - hillHeight, SCREEN_WIDTH, groundLevel);
+         targetCtx.lineTo(SCREEN_WIDTH, SCREEN_HEIGHT); // Line down to bottom right
+         targetCtx.lineTo(0, SCREEN_HEIGHT); // Line to bottom left
+         targetCtx.closePath();
+         targetCtx.fill();
+
+         // Moon (draw after hill)
+         targetCtx.fillStyle = COLOR_MOON;
+         targetCtx.beginPath();
+         // Position moon higher in the small sky area
+         targetCtx.arc(SCREEN_WIDTH * 0.85, groundLevel * 0.4, SCREEN_WIDTH * 0.04, 0, Math.PI * 2);
+         targetCtx.fill();
+
+         // Stars (only in sky area above groundLevel)
+         targetCtx.fillStyle = COLOR_STAR;
+         for (let i = 0; i < 100; i++) {
+             const x = Math.random() * SCREEN_WIDTH;
+             const y = Math.random() * groundLevel; // Ensure y is within the sky area
+             targetCtx.fillRect(Math.floor(x), Math.floor(y), 2, 2);
+         }
+     }
 }
 
 // --- Main Draw Function (Draws directly to main ctx) ---
@@ -1467,8 +1777,9 @@ function drawUI(targetCtx) { // Takes main ctx as argument now
     drawTextWithShadow(statusText, uiX, uiY);
     uiY += lineH;
 
-    // Timer
-    const timeLeft = Math.ceil((currentCycleDuration - (Date.now() - cycleTimer)) / 1000);
+    // Timer - Use gameTimeThisCycle and correct duration
+     const cycleDuration = isDay ? DAY_DURATION : NIGHT_DURATION;
+     const timeLeft = Math.max(0, Math.ceil(cycleDuration / 1000 - gameTimeThisCycle)); // Ensure non-negative
     drawTextWithShadow(`Time left: ${timeLeft}`, uiX, uiY);
     uiY += lineH;
 
@@ -1535,7 +1846,7 @@ function drawUI(targetCtx) { // Takes main ctx as argument now
 
 // --- Attack Handling ---
 function handleAttack() {
-    if (!player || isDay || gameOver) return;
+    if (!player || isDay || gameOver) return; // Player only attacks at night
 
     console.log("Player attacks!");
 
@@ -1563,9 +1874,15 @@ function handleAttack() {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance < player.attackRange) {
-                console.log(`Hit ${monster.constructor.name}!`);
-                monster.isActive = false; // Mark for removal
-                monsterHit = true;
+                // Check if the monster is NOT a Lumberjack before deactivating
+                if (!(monster instanceof Lumberjack)) { 
+                    console.log(`Hit ${monster.constructor.name}!`);
+                    monster.isActive = false; // Mark for removal
+                    monsterHit = true;
+                } else {
+                    console.log("Player attack hit Lumberjack, but it cannot be killed!");
+                    // Optional: Add visual/audio feedback for hitting invincible target
+                }
             }
         }
     }
@@ -1629,19 +1946,20 @@ function updatePlayerMovement() {
 // --- Initialization ---
 function init() {
     // Reset state for potential restart
-    score = INITIAL_SCORE;
+    score = 0; // <<< Change INITIAL_SCORE to 0
     gameOver = false;
     isDay = true; // Start at Day 1
-    cycleTimer = Date.now();
-    currentCycleDuration = DAY_DURATION;
+    dayNightCycleStart = performance.now(); // Reset timer
+    gameTimeThisCycle = 0;
+    gameTimeTotal = 0; // Reset total timer
     daysSurvived = 0;
     monsters = [];
     food = [];
     particles = [];
     player = null; // Ensure player is reset
-    lastTime = 0; // Reset timer
-    rockSpawnTimer = ROCK_SPAWN_INTERVAL; // Initialize timer here too
-    
+    lastTime = 0; // Reset loop timer
+    rockSpawnTimer = ROCK_SPAWN_INTERVAL; // << Initialize rock timer
+
     console.log("init started.");
     try {
         // Choose character
@@ -1650,8 +1968,10 @@ function init() {
         // Initial spawn
         if (isDay) {
             spawnFood();
+            spawnInitialMonsters(); // <<< ADD THIS CALL
         } else {
-            spawnInitialMonsters();
+            spawnInitialMonsters(); // Night monsters spawn here
+            // Optionally spawn food at night too? Currently not.
         }
 
         // Start the game loop
