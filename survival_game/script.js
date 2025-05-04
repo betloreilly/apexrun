@@ -117,6 +117,14 @@ const FENCE_POST_WIDTH = 10;
 const FENCE_RAIL_HEIGHT = 6;
 const FENCE_COLOR = '#A0522D'; // Sienna brown, same as old roof
 
+// Golden Egg Constants
+const NUM_GOLDEN_EGGS = 8;
+const GOLDEN_EGG_POINTS = 15;
+const GOLDEN_EGG_COLOR = '#FFD700'; // Gold
+const GOLDEN_EGG_SHINE_COLOR = '#FFFACD'; // Lemon Chiffon (for shine)
+const GOLDEN_EGG_WIDTH = 18;
+const GOLDEN_EGG_HEIGHT = 24;
+
 // --- Game State ---
 let isDay = true;
 // let cycleTimer = Date.now(); // REMOVE - Use dayNightCycleStart
@@ -128,6 +136,7 @@ let player = null; // Will be Fox or Wolf instance
 let monsters = [];
 let food = [];
 let particles = []; // Add particles array
+let goldenEggs = []; // Array for golden eggs
 let gameOver = false; // Add Game Over flag
 let rockSpawnTimer = ROCK_SPAWN_INTERVAL; // Timer for spawning rocks
 let dayNightCycleStart = performance.now(); // Use performance.now() for consistency
@@ -848,8 +857,45 @@ class Pig extends GameObject {
     }
 }
 
-// --- New NPC Classes ---
+// --- Golden Egg Class ---
+class GoldenEgg extends GameObject {
+    constructor(x, y) {
+        super(x, y, GOLDEN_EGG_COLOR);
+        this.width = GOLDEN_EGG_WIDTH;
+        this.height = GOLDEN_EGG_HEIGHT;
+        this.points = GOLDEN_EGG_POINTS;
+        this.shinePulseTime = Math.random() * Math.PI * 2; // Start shine randomly
+        this.shinePulseSpeed = 2; // How fast the shine pulsates
+        this.shineMaxAlpha = 0.7;
+    }
 
+    update(deltaTime) {
+        // Update pulse timer for shine effect
+        this.shinePulseTime += deltaTime * this.shinePulseSpeed;
+    }
+
+    draw(ctx) {
+        if (!this.isActive) return;
+
+        // Draw base egg shape (ellipse)
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.ellipse(this.x, this.y, this.width / 2, this.height / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw pulsing shine overlay
+        const shineAlpha = ((Math.sin(this.shinePulseTime) + 1) / 2) * this.shineMaxAlpha; // Varies between 0 and maxAlpha
+        ctx.globalAlpha = shineAlpha;
+        ctx.fillStyle = GOLDEN_EGG_SHINE_COLOR;
+        ctx.beginPath();
+        // Slightly smaller ellipse for shine
+        ctx.ellipse(this.x, this.y, this.width * 0.4, this.height * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0; // Reset global alpha
+    }
+}
+
+// --- New NPC Classes ---
 class GoldenChicken extends GameObject {
     constructor(x, y) {
         super(x, y, '#FFD700'); // Gold color
@@ -1385,10 +1431,10 @@ function update(deltaTime) {
     if (player) {
         player.update(deltaTime);
     } else {
-        // console.warn("update: Player object is null!"); // Keep warning just in case
+        // console.warn("update: Player object is null!"); 
     }
 
-    // Update NPCs
+    // Update NPCs and Collectibles
     monsters.forEach(monster => {
         if (monster.isActive) {
             if (monster instanceof Dog) {
@@ -1400,6 +1446,7 @@ function update(deltaTime) {
     });
     food.forEach(item => item.update(deltaTime));
     particles.forEach(p => p.update(deltaTime));
+    goldenEggs.forEach(egg => egg.update(deltaTime)); // <<< UPDATE EGGS
 
     // --- Collision Handling & Interactions ---
     if (player && !gameOver) { 
@@ -1416,9 +1463,10 @@ function update(deltaTime) {
                      }
                 }
             }
-        }
-        // Player vs Monsters (Nighttime)
-        else {
+        } 
+        // Player vs Monsters & Eggs (Nighttime)
+        else { 
+            // Player vs Monsters
             for (let i = monsters.length - 1; i >= 0; i--) {
                 const monster = monsters[i];
                 if (monster.isActive) {
@@ -1437,6 +1485,15 @@ function update(deltaTime) {
                      // NOTE: If adding other monsters that deal damage purely on collision (no cooldown/state), check them here.
                 }
             }
+            // Player vs Golden Eggs (Nighttime) <<< ADD EGG COLLECTION
+            for (let i = goldenEggs.length - 1; i >= 0; i--) {
+                const egg = goldenEggs[i];
+                if (egg.isActive && checkRectCollision(player, egg)) {
+                    player.heal(egg.points); // Use heal to add score
+                    egg.isActive = false;
+                    console.log(`Collected Golden Egg! +${egg.points} score. Score: ${score}`);
+                }
+            }
         }
     }
 
@@ -1444,6 +1501,7 @@ function update(deltaTime) {
     food = food.filter(f => f.isActive);
     monsters = monsters.filter(m => m.isActive);
     particles = particles.filter(p => p.isActive);
+    goldenEggs = goldenEggs.filter(e => e.isActive); // <<< CLEANUP EGGS
 }
 
 // --- Day/Night Cycle Logic ---
@@ -1475,6 +1533,7 @@ function handleDayNightCycle() {
             // Day transition logic
             clearMonsters(); // Clear night monsters (Trees, Rocks, Lumberjack)
             clearFood(); // Clear old food
+            clearGoldenEggs(); // <<< CLEAR EGGS AT DAY START
             spawnFood(); // Spawn new food for the day
             spawnInitialMonsters(); // Spawn day monsters (Dogs)
 
@@ -1484,7 +1543,7 @@ function handleDayNightCycle() {
             clearMonsters(); // Clear day monsters (Dogs)
              clearFood(); // Optionally clear food at night? Or let it persist? Keeping it for now.
             spawnInitialMonsters(); // Spawn night monsters (Trees, Rocks, Lumberjack)
-
+            spawnGoldenEggs(); // <<< SPAWN EGGS AT NIGHT START
         }
         // Update UI immediately (if needed, otherwise draw loop handles it)
         // updateTimeOfDayDisplay(); // Assuming this exists or is handled in drawUI
@@ -1638,6 +1697,47 @@ function clearFood() {
     food = [];
 }
 
+// --- New Golden Egg Spawning/Clearing ---
+function spawnGoldenEggs() {
+    goldenEggs = []; // Clear previous night's eggs first
+    console.log(`Spawning ${NUM_GOLDEN_EGGS} golden eggs for the night.`);
+    const groundLine = SCREEN_HEIGHT * 0.1; // Ensure eggs spawn on ground
+    const margin = 5; // Small margin
+
+    for (let i = 0; i < NUM_GOLDEN_EGGS; i++) {
+        let spawnX, spawnY, tooCloseToFence;
+        let attempts = 0;
+        const maxAttempts = 20;
+
+        do {
+            tooCloseToFence = false;
+            spawnX = margin + Math.random() * (SCREEN_WIDTH - 2 * margin);
+            spawnY = groundLine + margin + Math.random() * (SCREEN_HEIGHT * 0.9 - 2 * margin);
+
+            // Check if inside fence area
+            if (spawnX > FENCE_X && spawnX < FENCE_X + FENCE_WIDTH &&
+                spawnY > FENCE_Y && spawnY < FENCE_Y + FENCE_HEIGHT) {
+                tooCloseToFence = true;
+            }
+            attempts++;
+        } while (tooCloseToFence && attempts < maxAttempts);
+
+        if (!tooCloseToFence) {
+            // Clamp to ensure within bounds just in case
+            const safeX = Math.max(GOLDEN_EGG_WIDTH / 2 + margin, Math.min(SCREEN_WIDTH - GOLDEN_EGG_WIDTH / 2 - margin, spawnX));
+            const safeY = Math.max(groundLine + GOLDEN_EGG_HEIGHT / 2 + margin, Math.min(SCREEN_HEIGHT - GOLDEN_EGG_HEIGHT / 2 - margin, spawnY));
+            goldenEggs.push(new GoldenEgg(safeX, safeY));
+        } else {
+            console.warn("Could not find suitable spawn location for golden egg outside fence after", maxAttempts, "attempts.");
+        }
+    }
+}
+
+function clearGoldenEggs() {
+    console.log(`Clearing ${goldenEggs.length} golden eggs.`);
+    goldenEggs = [];
+}
+
 // --- Background Drawing (Modified to draw on main ctx) ---
 function drawBackground(targetCtx) {
      // RESTORE Old Sky/Ground Style
@@ -1721,7 +1821,7 @@ function drawBackground(targetCtx) {
      }
 }
 
-// --- Main Draw Function (Draws directly to main ctx) ---
+// --- Main Draw Function ---
 function draw() {
     // 1. Clear the main canvas (optional, as background overwrites)
     ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -1732,6 +1832,7 @@ function draw() {
     // 3. Draw Game Objects directly onto main ctx
     particles.forEach(p => p.draw(ctx));
     food.forEach(item => item.draw(ctx));
+    goldenEggs.forEach(egg => egg.draw(ctx)); // <<< DRAW EGGS (This line was added before but ensure it's correct)
     monsters.forEach(monster => monster.draw(ctx));
     if (player) {
         player.draw(ctx);
