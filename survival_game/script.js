@@ -2047,7 +2047,7 @@ function updatePlayerMovement() {
 // --- Initialization ---
 function init() {
     // Reset state for potential restart
-    score = 0; // <<< Change INITIAL_SCORE to 0
+    score = INITIAL_SCORE; // <<< Restore initial score constant
     gameOver = false;
     isDay = true; // Start at Day 1
     dayNightCycleStart = performance.now(); // Reset timer
